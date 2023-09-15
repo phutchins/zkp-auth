@@ -10,7 +10,7 @@ async fn main() {
     let hello = warp::path!("hello" / String)
         .map(|name| format!("Hello, {}!", name));
 
-    test_it().await;
+    //test_it().await;
 
     warp::serve(hello)
         .run(([127, 0, 0, 1], 3030))
