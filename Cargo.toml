@@ -11,6 +11,10 @@ path = "src/server.rs"
 name = "client"
 path = "src/client.rs"
 
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
 [dependencies]
 num-bigint = { version = "0.4", features = ["rand"] }
 num-traits = "0.2"
