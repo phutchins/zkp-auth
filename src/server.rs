@@ -1,13 +1,13 @@
 pub mod params;
 pub mod utils;
 mod zkp_auth;
+mod logger;
 
-//use std::str::FromStr;
 use num_bigint::{ToBigInt};
 use num_traits::Num;
 use tonic::{transport::Server, Request, Response, Status};
 use num_bigint::BigInt;
-
+use log::{info, debug, error};
 use zkp_auth:: auth_server::{Auth, AuthServer};
 use zkp_auth::{
   RegisterRequest,
@@ -17,13 +17,8 @@ use zkp_auth::{
   AuthenticationAnswerRequest,
   AuthenticationAnswerResponse
 };
-
 use params::{public};
 use crate::utils::{mod_exp_fast, random_big_int};
-/*
-use utils::{
-  mod_exp_fast
-};*/
 
 #[derive(Default)]
 pub struct AuthZKP {}
@@ -31,10 +26,6 @@ pub struct AuthZKP {}
 #[tonic::async_trait]
 impl Auth for AuthZKP {
   async fn register(&self, request:Request<RegisterRequest>) -> Result<Response<RegisterResponse>, Status> {
-    //println!("Request={:?}", request);
-    //println!("Registering user...");
-    //println!("Params={:?}", public());
-
     // Get store
     let mut store = new_store();
 
@@ -46,20 +37,18 @@ impl Auth for AuthZKP {
     // Check if user is already registered
     let user_is_registered = key_exists(&mut store, user, "y1");
 
+    info!("user_is_registered = {}", user_is_registered);
     if user_is_registered == false {
       // Insert user into store
-      store_y_vals(user, y1, y2).await;
-      //insert_into_store(&mut store, user, "y1", y1);
-      //insert_into_store(&mut store, user, "y2", y2);
-      println!("Just insert y1 - {}", y1);
-      println!("Just insert y2 - {}", y2);
-    } else {
-      // TODO: Return an error
-      println!("User already registered");
-      //Err(Status::invalid_argument("User already registered"));
-    }
+      store_y_vals(user, &y1, &y2).await;
 
-    Ok(Response::new(RegisterResponse{}))
+      debug!("Just insert y1 - {}", y1);
+      debug!("Just insert y2 - {}", y2);
+      Ok(Response::new(RegisterResponse{}))
+    } else {
+      info!("User already registered");
+      Err(Status::invalid_argument("User already registered"))
+    }
   }
 
   async fn create_authentication_challenge(&self, request:Request<AuthenticationChallengeRequest>) -> Result<Response<AuthenticationChallengeResponse>, Status> {
@@ -71,13 +60,12 @@ impl Auth for AuthZKP {
     let r1 = &request.get_ref().r1;
     let r2 = &request.get_ref().r2;
 
-    println!("Got authentication challenge request");
-    println!("r1 = {}", &r1);
-    println!("r2 = {}", &r2);
-    println!("user = {}", &user);
+    info!("Got authentication challenge request");
+    debug!("r1 = {}", &r1);
+    debug!("r2 = {}", &r2);
+    debug!("user = {}", &user);
 
     let c: BigInt = generate_c(&q);
-
     let user_registered = key_exists(&mut store, user, "y1");
 
     if user_registered {
@@ -86,10 +74,10 @@ impl Auth for AuthZKP {
 
       // Insert r1 and r2 into store
       store_r_vals(user, &r1, &r2).await;
-      //insert_into_store(&mut store, user, "r1", r1);
-      //insert_into_store(&mut store, user, "r2", r2);
-      //insert_into_store(&mut store, user, "c", &c);
       store_c_val(user, &c);
+    } else {
+      error!("User not registered");
+      return Err(Status::invalid_argument("User not registered"));
     }
 
     Ok(Response::new(AuthenticationChallengeResponse{
@@ -105,7 +93,7 @@ impl Auth for AuthZKP {
     // Get the solution to the challenge from the client
     let s_raw = &request.get_ref().s;
     let s: BigInt = Num::from_str_radix(s_raw, 16).unwrap();
-    println!("Got solution to challenge: {}", &s);
+    debug!("Got solution to challenge: {}", &s);
 
     // Get y1, y2, r2, r2 from data store
     let user = &request.get_ref().auth_id;
@@ -124,14 +112,14 @@ impl Auth for AuthZKP {
 
     // Compare validators results to prover results
     if auth_successful {
-      println!("Authentication successful");
+      info!("Authentication successful");
       // TODO: Generate and store an actual session_id
       session_id = "auth_success".to_string();
     } else {
-      println!("Authentication failed");
+      info!("Authentication failed");
     }
 
-    println!("Session id: {:?}", session_id);
+    debug!("Session id: {:?}", session_id);
 
     Ok(Response::new(AuthenticationAnswerResponse{
       session_id
@@ -178,26 +166,23 @@ async fn store_r_vals(user: &str, r1: &String, r2: &String){
 }
 
 fn generate_c(q: &BigInt) -> BigInt {
-  let c = random_big_int(2.to_bigint().unwrap(), *&q - 1);
-  println!("Generated challenge for authenticator: {}", &c);
+  let lower_bound = 2.to_bigint().unwrap();
+  let upper_bound = q - 1;
+  let c = random_big_int(&lower_bound, &upper_bound);
+  debug!("Generated challenge for authenticator: {}", &c);
   c
 }
 
 fn store_c_val(user: &str, c: &BigInt){
   let mut store = new_store();
-
   let c_str: String = c.to_str_radix(16);
-
   insert_into_store(&mut store, user, "c", &c_str);
 }
 
 fn get_c_val_from_store(user: &str) -> BigInt{
   let mut store = new_store();
-
   let c = get_from_store(&mut store, user, "c").unwrap();
-
   let c: BigInt = Num::from_str_radix(&c, 16).unwrap();
-
   c
 }
 
@@ -207,28 +192,18 @@ pub fn do_verify_calc(y1: &BigInt, y2: &BigInt, r1: &BigInt, r2: &BigInt, c: &Bi
 
   // Compute the results
   // R1 = g^2 * y1^c
-  //let result1 = g.pow(2) * y1.pow(u32::try_from(&c_big).unwrap()) % &p;
   // R2 = h^s * y2^c
-  //let result2 = h.pow(2) * y2.pow(u32::try_from(&c_big).unwrap()) % &p;
+  let result1 = (mod_exp_fast(&g.to_bigint().unwrap(), &s, &p ) * mod_exp_fast(&y1, &c, &p)) % &p;
+  let result2 = (mod_exp_fast(&h.to_bigint().unwrap(), &s, &p ) * mod_exp_fast(&y2, &c, &p)) % &p;
 
-  //let result1 = ((mod_exp_fast(&g.to_bigint().unwrap(), &s_big, &p) * mod_exp_fast(&y1, &c_big, &p) % &p) + &p) % &p;
-  //let result2 = ((mod_exp_fast(&g.to_bigint().unwrap(), &s_big, &p) * mod_exp_fast(&y2, &c_big, &p) % &p) + &p) % &p;
-
-  let result1 = ((mod_exp_fast(&g.to_bigint().unwrap(), &s, &p ) * mod_exp_fast(&y1, &c, &p) % &p) + &p) % &p;
-  let result11 = (mod_exp_fast(&g.to_bigint().unwrap(), &s, &p ) * mod_exp_fast(&y1, &c, &p)) % &p;
-  let result2 = ((mod_exp_fast(&h.to_bigint().unwrap(), &s, &p ) * mod_exp_fast(&y2, &c, &p)) + &p) % &p;
-
-  println!("r1 = {}", &r1);
-  println!("result1 = {}", &result1);
-  println!("result11 = {}", &result11);
-  println!("r2 = {}", &r2);
-  println!("result2 = {}", &result2);
+  debug!("r1 = {}", &r1);
+  debug!("result1 = {}", &result1);
+  debug!("r2 = {}", &r2);
+  debug!("result2 = {}", &result2);
 
   if &result1 == r1 && &result2 == r2 {
-    println!("Authentication successful");
     true
   } else {
-    println!("Authentication failed");
     false
   }
 }
@@ -254,31 +229,24 @@ pub fn insert_into_store(store: &mut scdb::Store, prefix: &str, key: &str, value
   // Convert b_key to a printable string
   let b_key_string = bytes_to_string(b_key.to_vec());
   let b_value_string = bytes_to_string(b_value.to_vec());
-  println!("Inserting into store - key: {:?} value: {:?}", b_key_string, b_value_string);
+  debug!("Inserting into store - key: {:?} value: {:?}", b_key_string, b_value_string);
   store.set(&b_key[..], &b_value[..], None).unwrap();
 }
 
 // A function to get a value from the store
 pub fn get_from_store(store: &mut scdb::Store, prefix: &str, key: &str) -> Result<String, &'static str>{
-  // Convert key to bytes
-
   let prefix_key = format!("{}-{}", prefix, key);
   let b_key = prefix_key.as_bytes();
-
-  //let b_key_string = bytes_to_string(b_key.to_vec());
-  //println!("b_key: {:?}", b_key_string);
-
   let result = store.get(&b_key);
   match result {
     Ok(None) => Err("Error getting value from store"),
     Ok(Some(value)) => {
       let b_value = value;
       let b_value_string = bytes_to_string(b_value.to_vec());
-      //println!("b_value: {:?}", b_value_string);
       Ok(b_value_string)
     },
     _ => {
-      println!("Error getting value from store");
+      error!("Error getting value from store");
       Err("Error getting value from store")
     }
   }
@@ -298,7 +266,7 @@ pub fn key_exists(store: &mut scdb::Store, prefix: &str, key: &str) -> bool{
   let b_key = prefix_key.as_bytes();
 
   let b_key_string = bytes_to_string(b_key.to_vec());
-  println!("Checking if key exists: {:?}", b_key_string);
+  debug!("Checking if key exists: {:?}", b_key_string);
 
   let result = store.get(&b_key).unwrap();
   match result {
@@ -315,9 +283,10 @@ pub fn bytes_to_string(bytes: Vec<u8>) -> String{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-  println!("Starting ZKP API server...");
+  logger::init().expect("Failed to initialize logger");
+  info!("Starting ZKP API server...");
 
-  let addr = "[::1]:8080".parse().unwrap();
+  let addr = "0.0.0.0:8080".parse().unwrap();
   let auth = AuthZKP::default();
 
   Server::builder()
@@ -325,7 +294,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .serve(addr)
     .await?;
 
-  println!("Server listening on {}", addr);
+  info!("Server listening on {}", addr);
 
   Ok(())
+}
+
+#[cfg(test)]
+mod tests{
+  use num_bigint::ToBigInt;
+
+  #[test]
+  fn test_mod_exp_fast(){
+    let g = 4.to_bigint().unwrap();
+    let x = 10.to_bigint().unwrap();
+    let p = 23.to_bigint().unwrap();
+
+    let result = super::mod_exp_fast(&g, &x, &p);
+
+    assert_eq!(result, 6.to_bigint().unwrap());
+  }
 }

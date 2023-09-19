@@ -1,6 +1,9 @@
 use num_bigint::{BigInt, RandBigInt, ToBigInt};
 use num_traits::{Zero, One};
 use num_traits::{cast::FromPrimitive};
+use tonic::transport::Channel;
+use crate::zkp_auth::auth_client::AuthClient;
+
 pub fn mod_exp_fast2(mut b: BigInt, mut e: BigInt, m: BigInt) -> BigInt
 {
   let mut result = BigInt::from_u64(1).unwrap();
@@ -48,6 +51,17 @@ pub fn mod_exp_fast(g: &BigInt, x: &BigInt, q: &BigInt) -> BigInt {
 }
 
 // Generate a random BigInt
-pub fn random_big_int(from: BigInt, to: BigInt) -> BigInt {
+pub fn random_big_int(from: &BigInt, to: &BigInt) -> BigInt {
   rand::thread_rng().gen_bigint_range(&from, &to)
+}
+
+pub async fn get_client(server_addr: &'static str) -> Result<AuthClient<Channel>,
+  tonic::transport::Error>{
+  // Open a channel to the server
+  let channel = Channel::from_static(server_addr)
+    .connect().await?;
+
+  // Create a client using the channel we just created
+  let client = AuthClient::new(channel);
+  Ok(client)
 }
