@@ -52,7 +52,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
           let pw_bytes = secret.clone();
           debug!("pw_bytes as string: {}", pw_bytes);
           let (y1, y2) = generate_register_params(&p, &g, &h, &secret);
-          zkp_register(&mut client, user, y1, y2).await.expect("TODO: panic message");
+          let register_response = zkp_register(&mut client, user, y1, y2).await;
+          match register_response {
+            Ok(response) => {
+              info!("Registration successful");
+              info!("Response: {:?}", response);
+            }
+            Err(e) => {
+              error!("Registration failed: {}", e.message());
+              //return Err(Box::try_from(e).unwrap())
+            }
+          }
         }
         "login" => {
           info!("Logging in...");
@@ -95,13 +105,13 @@ fn get_args() -> Vec<String>{
 fn get_user_credentials() -> (String, BigInt){
   let mut username = String::new();
 
-  print!("Please input username:");
+  print!("Please input username: ");
   io::stdout().flush().unwrap();
   io::stdin()
     .read_line(&mut username)
     .expect("Failed to read username");
 
-  print!("Please input password:");
+  print!("Please input password: ");
   io::stdout().flush().unwrap();
   let mut password = read_password().unwrap();
 
@@ -140,12 +150,11 @@ async fn zkp_register(client: &mut AuthClient<Channel>, user: String, y1: String
   // Check register_response for an error and return it if there is one
   match client.register(register_request).await {
     Ok(response) => {
-      info!("Registration successful");
-      info!("Response: {:?}", response);
+      debug!("Response: {:?}", response);
       Ok(response)
     }
     Err(e) => {
-      error!("Registration failed");
+      debug!("Error: {}", e.message());
       return Err(e)
     }
   }
