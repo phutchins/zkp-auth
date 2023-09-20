@@ -1,4 +1,5 @@
-build:
-	docker run --rm --user "$(id -u)":"$(id -g)" -v "$PWD":/usr/src/myapp -w /usr/src/myapp rust:1.23.0 cargo build
-	--release
+run-server:
+	docker compose up --build server
 
+run-client:
+	docker compose run --rm --build client /bin/bash

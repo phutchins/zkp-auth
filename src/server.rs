@@ -17,7 +17,7 @@ use zkp_auth::{
   AuthenticationAnswerRequest,
   AuthenticationAnswerResponse
 };
-use params::{public};
+use params::{public, get_server_bind_addr};
 use crate::utils::{mod_exp_fast, random_big_int};
 
 #[derive(Default)]
@@ -26,17 +26,16 @@ pub struct AuthZKP {}
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
   logger::init().expect("Failed to initialize logger");
-  info!("Starting ZKP API server...");
 
-  let addr = "0.0.0.0:8080".parse().unwrap();
+  let addr = get_server_bind_addr();
+  info!("Starting ZKP API server on {}...", addr);
+
   let auth = AuthZKP::default();
 
   Server::builder()
     .add_service(AuthServer::new(auth))
-    .serve(addr)
+    .serve((addr).parse().unwrap())
     .await?;
-
-  info!("Server listening on {}", addr);
 
   Ok(())
 }
@@ -72,7 +71,7 @@ impl Auth for AuthZKP {
   //
   async fn create_authentication_challenge(&self, request:Request<AuthenticationChallengeRequest>) -> Result<Response<AuthenticationChallengeResponse>, Status> {
     let mut store = new_store();
-    let mut auth_id = "UserNotRegistered".to_string();
+
 
     let q = public().1;
     let user = &request.get_ref().user;
@@ -87,10 +86,14 @@ impl Auth for AuthZKP {
     let c: BigInt = generate_c(&q);
     let user_registered = key_exists(&mut store, user, "y1");
 
-    if user_registered {
+    let auth_id = if user_registered {
       // TODO: Hash the username later
-      auth_id = user.to_string();
+      user.to_string()
+    } else {
+      "UserNotRegistered".to_string()
+    };
 
+    if user_registered {
       // Insert r1 and r2 into store
       store_r_vals(user, &r1, &r2).await;
       store_c_val(user, &c);
@@ -100,7 +103,7 @@ impl Auth for AuthZKP {
     }
 
     Ok(Response::new(AuthenticationChallengeResponse{
-      auth_id: auth_id,
+      auth_id,
       c: c.to_str_radix(16),
     }))
   }

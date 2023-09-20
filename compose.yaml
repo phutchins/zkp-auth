@@ -1,33 +1,18 @@
 services:
-  build:
-    build:
-      dockerfile: Dockerfile.build
-      target: build-zkp-auth
-    command: cargo build --release
-    volumes:
-        - .:/usr/src/myapp
-        - build:/usr/src/zkp-auth/target
   server:
     build:
       context: .
+    environment:
+      SERVER_ADDR: http://server:8080
     ports:
       - "8080:8080"
-    depends_on:
-      - build
-    volumes:
-        - build:/usr/src/zkp-auth/target
-    command: "/usr/src/zkp-auth/target/release/server"
+    command: "/usr/local/bin/server"
+    #command: ["sh", "-c", "tail -f /dev/null"]
   client:
     build:
       context: .
     environment:
-      SERVER_ADDR: server:8080
-    depends_on:
-      - build
-    volumes:
-      - build:/usr/src/zkp-auth/target
+      SERVER_ADDR: http://server:8080
+    stdin_open: true
+    tty: true
     command: ["sh", "-c", "tail -f /dev/null"]
-
-volumes:
-  build:
-    driver: local
