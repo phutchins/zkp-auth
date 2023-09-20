@@ -36,9 +36,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
   // Import public parameters from params.rs
   let (p, q, g, h) = public();
 
+  // Read the args that the user entered on command line (register or login)
   let command_line_args = get_args();
 
-  // Empty command line args or register
+  // Handle command line args
   match command_line_args.len() {
     1 => {
       info!("Please use one of the following commands: register | login");
@@ -79,7 +80,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
           debug!("k = {}", &k);
           debug!("user = {}", &*user);
 
-          zkp_login(&mut client, &user, &secret, &r1, &r2, &q, &k).await.expect("TODO: panic message");
+          let login_response = zkp_login(&mut client, &user, &secret, &r1, &r2, &q, &k).await;
+          match login_response {
+            Ok(response) => {
+              info!("Login successful! Session id: {}", response.get_ref().auth_id);
+            }
+            Err(e) => {
+              error!("Login failed: {}", e.message());
+            }
+          }
         }
         _ => {
           error!("Please use one of the following commands: register | login");

@@ -23,6 +23,24 @@ use crate::utils::{mod_exp_fast, random_big_int};
 #[derive(Default)]
 pub struct AuthZKP {}
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+  logger::init().expect("Failed to initialize logger");
+  info!("Starting ZKP API server...");
+
+  let addr = "0.0.0.0:8080".parse().unwrap();
+  let auth = AuthZKP::default();
+
+  Server::builder()
+    .add_service(AuthServer::new(auth))
+    .serve(addr)
+    .await?;
+
+  info!("Server listening on {}", addr);
+
+  Ok(())
+}
+
 #[tonic::async_trait]
 impl Auth for AuthZKP {
   async fn register(&self, request:Request<RegisterRequest>) -> Result<Response<RegisterResponse>, Status> {
@@ -51,6 +69,7 @@ impl Auth for AuthZKP {
     }
   }
 
+  //
   async fn create_authentication_challenge(&self, request:Request<AuthenticationChallengeRequest>) -> Result<Response<AuthenticationChallengeResponse>, Status> {
     let mut store = new_store();
     let mut auth_id = "UserNotRegistered".to_string();
@@ -281,24 +300,6 @@ pub fn bytes_to_string(bytes: Vec<u8>) -> String{
   result
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-  logger::init().expect("Failed to initialize logger");
-  info!("Starting ZKP API server...");
-
-  let addr = "0.0.0.0:8080".parse().unwrap();
-  let auth = AuthZKP::default();
-
-  Server::builder()
-    .add_service(AuthServer::new(auth))
-    .serve(addr)
-    .await?;
-
-  info!("Server listening on {}", addr);
-
-  Ok(())
-}
-
 #[cfg(test)]
 mod tests{
   use num_bigint::ToBigInt;
@@ -312,5 +313,10 @@ mod tests{
     let result = super::mod_exp_fast(&g, &x, &p);
 
     assert_eq!(result, 6.to_bigint().unwrap());
+  }
+
+  #[test]
+  fn test_create_authentication_challenge() {
+
   }
 }
