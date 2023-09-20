@@ -10,7 +10,8 @@ static LARGE_PRIME: &str = "3231700607131100730033891392642382824881794124114023
 716365332097170774482279885885653692086452966360772502689555059283627511211740969729980684105543\
 59584866583291642136218231078990999448652468262416972035911852507045361090559";
 
-pub static SERVER_ADDR: &'static str = "http://0.0.0.0:8080";
+pub static SERVER_ADDR: &'static str = "http://server:8080";
+pub static SERVER_BIND_ADDR: &'static str = "http://0.0.0.0:8080";
 
 pub fn get_server_addr() -> &'static str {
   match env::var("SERVER_ADDR") {
@@ -18,6 +19,14 @@ pub fn get_server_addr() -> &'static str {
     Err(_) => SERVER_ADDR
   };
   SERVER_ADDR
+}
+
+pub fn get_server_bind_addr() -> &'static str {
+  match env::var("SERVER_BIND_ADDR") {
+    Ok(val) => val.as_str(),
+    Err(_) => SERVER_BIND_ADDR
+  };
+  SERVER_BIND_ADDR
 }
 
 pub fn public() -> (BigInt, BigInt, i32, i32) {
